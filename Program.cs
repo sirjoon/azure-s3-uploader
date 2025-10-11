@@ -5,8 +5,8 @@ using System.Text.Json.Serialization;
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-// 🔗 Replace with your AWS API URL
-const string AwsApiUrl = "https://abc123xyz.execute-api.us-east-1.amazonaws.com/presign";
+// 🔗 AWS API Gateway URL for S3 presigned URL generation
+const string AwsApiUrl = "https://vbwbv9l1r8.execute-api.us-east-1.amazonaws.com";
 
 app.MapGet("/", () => Results.Content(@"
 <!DOCTYPE html>
