@@ -5,8 +5,12 @@ using System.Text.Json.Serialization;
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-// 🔗 AWS API Gateway URL for S3 presigned URL generation
-const string AwsApiUrl = "https://vbwbv9l1r8.execute-api.us-east-1.amazonaws.com/presign";
+// 🔗 AWS API Gateway URL and API Key from environment variables (set in Azure App Settings)
+var AwsApiUrl = Environment.GetEnvironmentVariable("AWS_API_URL")
+    ?? "https://k4k5bzpsn0.execute-api.us-east-1.amazonaws.com/stage/presign";
+
+var AwsApiKey = Environment.GetEnvironmentVariable("AWS_API_KEY")
+    ?? throw new InvalidOperationException("AWS_API_KEY not configured in Azure App Settings");
 
 app.MapGet("/", () => Results.Content(@"
 <!DOCTYPE html>
@@ -88,7 +92,10 @@ app.MapPost("/upload", async (HttpRequest req) =>
     var file = form.Files["file"];
     if (file == null) return Results.BadRequest("No file uploaded.");
 
+    // 🔐 Create HTTP client and add API key header for authentication
     var http = new HttpClient();
+    http.DefaultRequestHeaders.Add("x-api-key", AwsApiKey);
+
     var presignResponse = await http.GetAsync(AwsApiUrl);
     var json = await presignResponse.Content.ReadAsStringAsync();
     var data = JsonSerializer.Deserialize<PresignResponse>(json);
@@ -171,7 +178,12 @@ app.MapPost("/upload", async (HttpRequest req) =>
 </html>", "text/html");
 });
 
-app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
+app.MapGet("/health", () => Results.Ok(new {
+    status = "healthy",
+    timestamp = DateTime.UtcNow,
+    apiKeyConfigured = !string.IsNullOrEmpty(AwsApiKey),
+    apiUrl = AwsApiUrl
+}));
 
 app.Run();
 
