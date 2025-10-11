@@ -6,7 +6,7 @@ var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
 // 🔗 AWS API Gateway URL for S3 presigned URL generation
-const string AwsApiUrl = "https://vbwbv9l1r8.execute-api.us-east-1.amazonaws.com";
+const string AwsApiUrl = "https://vbwbv9l1r8.execute-api.us-east-1.amazonaws.com/presign";
 
 app.MapGet("/", () => Results.Content(@"
 <!DOCTYPE html>
