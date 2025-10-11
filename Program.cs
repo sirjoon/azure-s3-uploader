@@ -88,17 +88,34 @@ app.MapGet("/", () => Results.Content(@"
 
 app.MapPost("/upload", async (HttpRequest req) =>
 {
-    var form = await req.ReadFormAsync();
-    var file = form.Files["file"];
-    if (file == null) return Results.BadRequest("No file uploaded.");
+    try
+    {
+        var form = await req.ReadFormAsync();
+        var file = form.Files["file"];
+        if (file == null) return Results.BadRequest("No file uploaded.");
 
-    // 🔐 Create HTTP client and add API key header for authentication
-    var http = new HttpClient();
-    http.DefaultRequestHeaders.Add("x-api-key", AwsApiKey);
+        // 🔐 Create HTTP client and add API key header for authentication
+        var http = new HttpClient();
+        http.DefaultRequestHeaders.Add("x-api-key", AwsApiKey);
 
-    var presignResponse = await http.GetAsync(AwsApiUrl);
-    var json = await presignResponse.Content.ReadAsStringAsync();
-    var data = JsonSerializer.Deserialize<PresignResponse>(json);
+        var presignResponse = await http.GetAsync(AwsApiUrl);
+
+        if (!presignResponse.IsSuccessStatusCode)
+        {
+            var errorContent = await presignResponse.Content.ReadAsStringAsync();
+            return Results.BadRequest($"Failed to get presigned URL: {presignResponse.StatusCode} - {errorContent}");
+        }
+
+        var json = await presignResponse.Content.ReadAsStringAsync();
+
+        // Parse the response - it has a nested structure with "body" field
+        var apiResponse = JsonSerializer.Deserialize<ApiGatewayResponse>(json);
+        var data = JsonSerializer.Deserialize<PresignResponse>(apiResponse.body);
+
+        if (data == null || string.IsNullOrEmpty(data.url))
+        {
+            return Results.BadRequest("Invalid presigned URL response from API");
+        }
 
     using var stream = file.OpenReadStream();
     var put = new HttpRequestMessage(HttpMethod.Put, data.url)
@@ -108,11 +125,11 @@ app.MapPost("/upload", async (HttpRequest req) =>
     put.Content.Headers.ContentType =
         new System.Net.Http.Headers.MediaTypeHeaderValue("application/pdf");
 
-    var resp = await http.SendAsync(put);
-    if (!resp.IsSuccessStatusCode)
-        return Results.BadRequest($"Upload failed: {resp.StatusCode}");
+        var resp = await http.SendAsync(put);
+        if (!resp.IsSuccessStatusCode)
+            return Results.BadRequest($"Upload failed: {resp.StatusCode}");
 
-    return Results.Content($@"
+        return Results.Content($@"
 <!DOCTYPE html>
 <html>
 <head>
@@ -176,6 +193,11 @@ app.MapPost("/upload", async (HttpRequest req) =>
     </div>
 </body>
 </html>", "text/html");
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest($"Error during upload: {ex.Message}");
+    }
 });
 
 app.MapGet("/health", () => Results.Ok(new {
@@ -187,6 +209,13 @@ app.MapGet("/health", () => Results.Ok(new {
 
 app.Run();
 
-record PresignResponse([property: JsonPropertyName("url")] string url,
-                       [property: JsonPropertyName("key")] string key,
-                       [property: JsonPropertyName("expiresIn")] int expiresIn);
+record ApiGatewayResponse(
+    [property: JsonPropertyName("statusCode")] int statusCode,
+    [property: JsonPropertyName("body")] string body
+);
+
+record PresignResponse(
+    [property: JsonPropertyName("url")] string url,
+    [property: JsonPropertyName("key")] string key,
+    [property: JsonPropertyName("expiresIn")] int expiresIn
+);
