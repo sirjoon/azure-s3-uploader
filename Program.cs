@@ -4,6 +4,21 @@ using System.Text.Json.Serialization;
 using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure Kestrel to accept large file uploads (up to 100MB)
+builder.Services.Configure<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>(options =>
+{
+    options.Limits.MaxRequestBodySize = 104857600; // 100 MB
+});
+
+// Configure form options for multipart requests
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 104857600; // 100 MB
+    options.ValueLengthLimit = 104857600;
+    options.MultipartHeadersLengthLimit = 104857600;
+});
+
 var app = builder.Build();
 
 // 🔗 AWS API Gateway URLs and API Key from environment variables
@@ -251,8 +266,8 @@ app.MapGet("/", () => Results.Content(@"
                     </tr>
                     <tr>
                         <td>Max file size</td>
-                        <td>Unlimited</td>
-                        <td>6 MB (API Gateway limit)</td>
+                        <td>100 MB (Azure limit)</td>
+                        <td>10 MB (API Gateway limit)</td>
                     </tr>
                 </tbody>
             </table>
@@ -727,9 +742,9 @@ static string GenerateInsights(string method, long totalTime, long apiCallTime, 
     {
         insights.Add("Single-step upload - simplest architecture");
 
-        if (fileSize > 6 * 1024 * 1024)
+        if (fileSize > 10 * 1024 * 1024)
         {
-            insights.Add("⚠️ Warning: Files >6MB may fail with direct upload (API Gateway limit)");
+            insights.Add("⚠️ Warning: Files >10MB may fail with direct upload (API Gateway limit)");
         }
 
         if (totalTime < 1000)
