@@ -186,7 +186,7 @@ app.MapGet("/", () => Results.Content(@"
         <form action='/upload' method='post' enctype='multipart/form-data' class='upload-form'>
             <div class='method-selector'>
                 <div class='method-card' id='method-presign' onclick='selectMethod(""presign"")'>
-                    <input type='radio' name='method' value='presign' checked />
+                    <input type='radio' value='presign' checked />
                     <div class='method-title'>🔐 Presigned URL</div>
                     <div class='method-description'>
                         Two-step process: Get URL from Lambda, then upload directly to S3
@@ -198,7 +198,7 @@ app.MapGet("/", () => Results.Content(@"
                 </div>
 
                 <div class='method-card' id='method-direct' onclick='selectMethod(""direct"")'>
-                    <input type='radio' name='method' value='direct' />
+                    <input type='radio' value='direct' />
                     <div class='method-title'>⚡ Direct Upload</div>
                     <div class='method-description'>
                         One-step: Upload file directly through Lambda to S3
