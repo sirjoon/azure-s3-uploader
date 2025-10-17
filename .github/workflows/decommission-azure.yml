@@ -1,0 +1,160 @@
+name: Decommission Azure Resources
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_deletion:
+        description: 'Type DELETE to confirm resource deletion'
+        required: true
+        default: 'NO'
+      delete_resource_group:
+        description: 'Also delete the entire resource group? (true/false)'
+        required: false
+        default: 'false'
+
+jobs:
+  decommission:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify deletion confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_deletion }}" != "DELETE" ]; then
+            echo "❌ Deletion not confirmed. You must type 'DELETE' to proceed."
+            exit 1
+          fi
+          echo "✅ Deletion confirmed. Proceeding with decommissioning..."
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get App Service details
+        id: app-details
+        run: |
+          echo "📋 Fetching App Service details..."
+
+          # Check if app exists
+          if az webapp show --name s3uploader-plan 2>/dev/null; then
+            RESOURCE_GROUP=$(az webapp show --name s3uploader-plan --query resourceGroup -o tsv)
+            echo "resource_group=$RESOURCE_GROUP" >> $GITHUB_OUTPUT
+            echo "app_exists=true" >> $GITHUB_OUTPUT
+
+            echo "Found App Service:"
+            echo "  Name: s3uploader-plan"
+            echo "  Resource Group: $RESOURCE_GROUP"
+          else
+            echo "⚠️  App Service 's3uploader-plan' not found. It may already be deleted."
+            echo "app_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Delete App Service
+        if: steps.app-details.outputs.app_exists == 'true'
+        run: |
+          echo "🗑️  Deleting App Service: s3uploader-plan"
+
+          az webapp delete \
+            --name s3uploader-plan \
+            --resource-group ${{ steps.app-details.outputs.resource_group }} \
+            --yes
+
+          echo "✅ App Service deleted successfully"
+
+      - name: Delete App Service Plan
+        if: steps.app-details.outputs.app_exists == 'true'
+        run: |
+          echo "🗑️  Deleting App Service Plan: s3uploader-plan"
+
+          az appservice plan delete \
+            --name s3uploader-plan \
+            --resource-group ${{ steps.app-details.outputs.resource_group }} \
+            --yes
+
+          echo "✅ App Service Plan deleted successfully"
+
+      - name: Delete Resource Group (optional)
+        if: steps.app-details.outputs.app_exists == 'true' && github.event.inputs.delete_resource_group == 'true'
+        run: |
+          echo "🗑️  Deleting Resource Group: ${{ steps.app-details.outputs.resource_group }}"
+          echo "⚠️  This will delete ALL resources in the resource group!"
+
+          az group delete \
+            --name ${{ steps.app-details.outputs.resource_group }} \
+            --yes \
+            --no-wait
+
+          echo "✅ Resource Group deletion initiated (running in background)"
+
+      - name: Verify deletion
+        if: steps.app-details.outputs.app_exists == 'true'
+        run: |
+          echo "🔍 Verifying deletion..."
+
+          # Check if app still exists
+          if az webapp show --name s3uploader-plan 2>/dev/null; then
+            echo "❌ App Service still exists (deletion may have failed)"
+            exit 1
+          else
+            echo "✅ App Service successfully deleted"
+          fi
+
+          # Check if app service plan still exists
+          if az appservice plan show --name s3uploader-plan --resource-group ${{ steps.app-details.outputs.resource_group }} 2>/dev/null; then
+            echo "❌ App Service Plan still exists (deletion may have failed)"
+            exit 1
+          else
+            echo "✅ App Service Plan successfully deleted"
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo ""
+          echo "================================================"
+          echo "🎉 Azure Decommissioning Summary"
+          echo "================================================"
+          echo ""
+
+          if [ "${{ steps.app-details.outputs.app_exists }}" == "true" ]; then
+            echo "✅ Deleted Resources:"
+            echo "  - App Service: s3uploader-plan"
+            echo "  - App Service Plan: s3uploader-plan"
+
+            if [ "${{ github.event.inputs.delete_resource_group }}" == "true" ]; then
+              echo "  - Resource Group: ${{ steps.app-details.outputs.resource_group }} (deletion in progress)"
+            fi
+
+            echo ""
+            echo "💰 Cost Impact:"
+            echo "  - Monthly savings: ~$69.35 (Standard S1 tier)"
+            echo "  - Annual savings: ~$832/year"
+            echo ""
+            echo "📊 Next Steps:"
+            echo "  1. Verify zero charges in Azure billing next month"
+            echo "  2. Delete AWS resources (Lambda, API Gateway, S3)"
+            echo "  3. Delete local source code (if desired)"
+          else
+            echo "ℹ️  App Service not found (already deleted or doesn't exist)"
+          fi
+
+          echo ""
+          echo "================================================"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo ""
+          echo "❌ Decommissioning failed!"
+          echo ""
+          echo "Possible reasons:"
+          echo "  1. Azure credentials not configured in GitHub secrets"
+          echo "  2. App Service doesn't exist"
+          echo "  3. Insufficient permissions"
+          echo "  4. Network/connectivity issues"
+          echo ""
+          echo "Manual deletion option:"
+          echo "  https://portal.azure.com → App Services → s3uploader-plan → Delete"
